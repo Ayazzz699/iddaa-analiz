@@ -20,7 +20,7 @@ if not check_password():
 
 # --- 2. API KONFİGÜRASYONU ---
 # Kendi API anahtarını aşağıya yapıştırdığından emin ol
-API_KEY = "be89a4fda1mshbe9a84ef6434b94p1ff5e4jsnfc2d87499454" 
+API_KEY = "7ab9862a233578646432c282ae1fa676" 
 BASE_URL = "https://v3.football.api-sports.io/"
 HEADERS = {
     'x-rapidapi-host': "v3.football.api-sports.io",
@@ -127,3 +127,4 @@ with sekme3:
     if search_query:
         st.markdown(f"### [🔗 {search_query} Maçını Canlı İzle (Google)](https://www.google.com/search?q={search_query.replace(' ', '+')}+canli+izle+taraftarium24+selcuksports)")
         st.info("İpucu: Çıkan sonuçlarda 'Taraftarium24' veya 'SelçukSports' içeren linklere bakabilirsin.")
+
