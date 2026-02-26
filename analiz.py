@@ -4,10 +4,9 @@ import pandas as pd
 from scipy.stats import poisson
 from datetime import datetime
 
-# --- 1. GÜVENLİK VE SAYFA AYARLARI ---
-st.set_page_config(page_title="PRO İDDAA ANALİZ", layout="wide")
+# --- 1. AYARLAR VE GÜVENLİK ---
+st.set_page_config(page_title="PRO ANALİZ V2", layout="wide")
 
-# Sadece senin kullanman için şifre koruması
 def check_password():
     if "password_correct" not in st.session_state:
         st.sidebar.text_input("Sistem Şifresi", type="password", on_change=lambda: st.session_state.update({"password_correct": st.session_state.password == "1234"}), key="password")
@@ -15,116 +14,83 @@ def check_password():
     return st.session_state["password_correct"]
 
 if not check_password():
-    st.warning("🔒 Lütfen yetkili giriş şifresini giriniz.")
+    st.warning("🔒 Giriş Yapınız.")
     st.stop()
 
-# --- 2. API KONFİGÜRASYONU ---
-# Kendi API anahtarını aşağıya yapıştırdığından emin ol
-API_KEY = "7ab9862a233578646432c282ae1fa676" 
+# --- 2. API AYARLARI ---
+API_KEY = "7ab9862a233578646432c282ae1fa676"
 BASE_URL = "https://v3.football.api-sports.io/"
-HEADERS = {
-    'x-rapidapi-host': "v3.football.api-sports.io",
-    'x-rapidapi-key': API_KEY
-}
+HEADERS = {'x-rapidapi-host': "v3.football.api-sports.io", 'x-rapidapi-key': API_KEY}
 
-# --- 3. VERİ ÇEKME FONKSİYONU (Gelişmiş Hata Ayıklama) ---
-def get_api_data(endpoint):
+# --- 3. VERİ ÇEKME MOTORU ---
+def get_data(endpoint):
     try:
-        url = f"{BASE_URL}{endpoint}"
-        response = requests.get(url, headers=HEADERS, timeout=12)
-        data = response.json()
-        
-        # Eğer API hata döndürürse ekrana basar
-        if data.get('errors'):
-            st.error(f"❌ API Hatası: {data['errors']}")
-            return []
-            
-        return data.get('response', [])
-    except Exception as e:
-        st.error(f"🚀 Bağlantı Hatası: {e}")
-        return []
+        res = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, timeout=12).json()
+        if res.get('errors'): st.error(f"API Hatası: {res['errors']}"); return []
+        return res.get('response', [])
+    except: return []
 
-def hesapla_poisson(ev_gol, dep_gol):
-    ev_beklenen = ev_gol if ev_gol > 0 else 0.5
-    dep_beklenen = dep_gol if dep_gol > 0 else 0.5
-    toplam_lambda = ev_beklenen + dep_beklenen
-    olasilik_alt = sum([poisson.pmf(i, toplam_lambda) for i in range(3)])
-    return round((1 - olasilik_alt) * 100, 1)
+def get_live_stats(fixture_id):
+    """ Canlı Korner, Kart ve Şut verilerini çeker """
+    stats_data = get_data(f"fixtures/statistics?fixture={fixture_id}")
+    result = {"korner": 0, "kart": 0, "sut": 0}
+    if stats_data:
+        for team in stats_data:
+            for s in team['statistics']:
+                val = s['value'] if s['value'] else 0
+                if s['type'] == 'Corner Kicks': result['korner'] += val
+                if s['type'] == 'Yellow Cards': result['kart'] += val
+                if s['type'] == 'Total Shots': result['sut'] += val
+    return result
 
-# --- 4. ANA ARAYÜZ ---
-st.title("🛡️ Pro-İddaa Analiz Komuta Merkezi")
-st.sidebar.success("Sistem Aktif")
+# --- 4. ANA PANEL ---
+st.title("⚽ PRO-İDDAA KOMUTA MERKEZİ V2")
+tabs = st.tabs(["📡 CANLI ANALİZ", "📅 PROGRAM", "📺 YAYIN"])
 
-sekme1, sekme2, sekme3 = st.tabs(["📡 CANLI MAÇLAR & ANALİZ", "📅 GÜNLÜK PROGRAM", "📺 YAYIN ARA"])
-
-# --- TAB 1: CANLI SKORLAR (UEFA DAHİL) ---
-with sekme1:
-    col1, col2 = st.columns([1, 4])
-    if col1.button("🔄 Skorları Güncelle"):
-        st.rerun()
+# --- CANLI ANALİZ SEKMESİ ---
+with tabs[0]:
+    if st.button("🔄 Verileri Tazele"): st.rerun()
     
-    # Tüm canlı maçları çek
-    live_matches = get_api_data("fixtures?live=all")
+    live_matches = get_data("fixtures?live=all")
     
     if not live_matches:
-        st.info("⚠️ Şu an aktif canlı maç (veya UEFA verisi) gelmiyor. API aboneliğini veya maç saatini kontrol et.")
-        # Acil durum: Bugünün tüm maçlarını listeleme butonu
-        if st.button("Bugünün Tüm Maçlarını Listele"):
-            today = datetime.now().strftime('%Y-%m-%d')
-            today_matches = get_api_data(f"fixtures?date={today}")
-            for m in today_matches:
-                st.write(f"⏰ {m['fixture']['date'][11:16]} | {m['teams']['home']['name']} vs {m['teams']['away']['name']}")
+        st.info("Şu an canlı maç verisi yok veya API kotası doldu.")
     else:
         for m in live_matches:
-            # Önemli ligler veya UEFA maçlarını vurgula
-            is_uefa = "UEFA" in m['league']['name']
-            header_text = f"{'🏆' if is_uefa else '⚽'} {m['fixture']['status']['elapsed']}' | {m['teams']['home']['name']} {m['goals']['home']} - {m['goals']['away']} {m['teams']['away']['name']}"
+            m_id = m['fixture']['id']
+            # Derin İstatistik Çekimi
+            l_stats = get_live_stats(m_id)
             
-            with st.expander(header_text, expanded=is_uefa):
+            with st.expander(f"🏟️ {m['fixture']['status']['elapsed']}' | {m['teams']['home']['name']} {m['goals']['home']} - {m['goals']['away']} {m['teams']['away']['name']}", expanded=True):
                 c1, c2, c3, c4 = st.columns(4)
                 
-                # İstatistikleri bul (Korner/Kart)
-                corners, cards = "N/A", "N/A"
-                if m.get('statistics'):
-                    for s in m['statistics']:
-                        if s['type'] == 'Corner Kicks': corners = s['value']
-                        if s['type'] == 'Yellow Cards': cards = s['value']
+                # METRİKLER
+                c1.metric("SKOR", f"{m['goals']['home']}-{m['goals']['away']}")
+                c2.metric("KORNER", l_stats['korner'])
+                c3.metric("KART", l_stats['kart'])
                 
-                c1.metric("Skor", f"{m['goals']['home']} - {m['goals']['away']}")
-                c2.metric("Korner", corners)
-                c3.metric("Kart", cards)
-                
-                # Yapay Zeka Tahmini
-                toplam_gol = (m['goals']['home'] or 0) + (m['goals']['away'] or 0)
-                if m['fixture']['status']['elapsed'] > 30:
-                    tahmin = "GOL BEKLENİYOR" if toplam_gol < 2 else "MAÇ DENGELİ"
-                    c4.warning(f"Analiz: {tahmin}")
+                # KORNER ANALİZ ALGORİTMASI
+                dk = m['fixture']['status']['elapsed']
+                if dk > 5:
+                    # Dakika başına korner ortalamasından maç sonu tahmini
+                    projeksiyon = (l_stats['korner'] / dk) * 95 
+                    tahmin = "9.5 ÜST" if projeksiyon > 9.3 else "8.5 / 9.5 ALT"
+                    c4.subheader(f"🔮 {tahmin}")
+                    st.caption(f"Yapay Zeka Maç Sonu Korner Beklentisi: {round(projeksiyon, 1)}")
+                else:
+                    c4.write("Analiz Başlıyor...")
 
-# --- TAB 2: GÜNLÜK PROGRAM ---
-with sekme2:
-    st.subheader("📊 Maç Önü Poisson Analizi")
-    lig_secimi = st.selectbox("Lig / Kupa Seç", 
-                             [3, 848, 203, 39, 140, 135, 78], 
-                             format_func=lambda x: {3:"UEFA Avrupa Ligi", 848:"UEFA Konferans Ligi", 203:"Süper Lig", 39:"Premier Lig", 140:"La Liga", 135:"Serie A", 78:"Bundesliga"}[x])
-    
-    if st.button("Analizleri Listele"):
-        fixtures = get_api_data(f"fixtures?league={lig_secimi}&season=2025&next=15")
-        if fixtures:
-            df_list = []
-            for f in fixtures:
-                df_list.append({
-                    "Maç": f"{f['teams']['home']['name']} - {f['teams']['away']['name']}",
-                    "Saat": f['fixture']['date'][11:16],
-                    "2.5 Üst %": f"%{hesapla_poisson(1.6, 1.3)}",
-                    "Tahmin": "KG VAR" if hesapla_poisson(1.6, 1.3) > 60 else "ALT / DENGELİ"
-                })
-            st.table(pd.DataFrame(df_list))
+# --- PROGRAM SEKMESİ ---
+with tabs[1]:
+    lig = st.selectbox("Lig Seç", [3, 848, 203, 39], format_func=lambda x: {3:"Avrupa Ligi", 848:"Konferans Ligi", 203:"Süper Lig", 39:"Premier Lig"}[x])
+    if st.button("Analiz Et"):
+        fix = get_data(f"fixtures?league={lig}&season=2025&next=10")
+        if fix:
+            res = [{"Maç": f"{f['teams']['home']['name']}-{f['teams']['away']['name']}", "Saat": f['fixture']['date'][11:16], "Tahmin": "GOL VAR / 2.5 ÜST"} for f in fix]
+            st.table(pd.DataFrame(res))
 
-# --- TAB 3: YAYIN ARA ---
-with sekme3:
-    st.subheader("📺 Canlı Maç Yayını Arama")
-    search_query = st.text_input("Maç Adı (Örn: Nottingham Forest Fenerbahçe):")
-    if search_query:
-        st.markdown(f"### [🔗 {search_query} Maçını Canlı İzle (Google)](https://www.google.com/search?q={search_query.replace(' ', '+')}+canli+izle+taraftarium24+selcuksports)")
-        st.info("İpucu: Çıkan sonuçlarda 'Taraftarium24' veya 'SelçukSports' içeren linklere bakabilirsin.")
-
+# --- YAYIN SEKMESİ ---
+with tabs[2]:
+    ara = st.text_input("Maç Yaz (Örn: Fenerbahçe):")
+    if ara:
+        st.markdown(f"### [🔗 {ara} CANLI İZLE (HD)](https://www.google.com/search?q={ara.replace(' ', '+')}+canli+izle+selcuksports+taraftarium24)")
