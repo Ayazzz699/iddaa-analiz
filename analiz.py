@@ -94,3 +94,4 @@ with tabs[2]:
     ara = st.text_input("Maç Yaz (Örn: Fenerbahçe):")
     if ara:
         st.markdown(f"### [🔗 {ara} CANLI İZLE (HD)](https://www.google.com/search?q={ara.replace(' ', '+')}+canli+izle+selcuksports+taraftarium24)")
+
